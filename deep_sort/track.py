@@ -63,7 +63,7 @@ class Track:
 
     """
 
-    def __init__(self, mean, covariance, track_id, n_init, max_age,
+    def __init__(self, mean, covariance, track_id, cls_id, score, n_init, max_age,
                  feature=None):
         self.mean = mean
         self.covariance = covariance
@@ -79,6 +79,8 @@ class Track:
 
         self._n_init = n_init
         self._max_age = max_age
+        self.cls_id = cls_id
+        self.score = score
 
     def to_tlwh(self):
         """Get current position in bounding box format `(top left x, top left y,
@@ -141,6 +143,8 @@ class Track:
 
         self.hits += 1
         self.time_since_update = 0
+        self.cls_id = detection.cls_id
+        self.score = detection.score
         if self.state == TrackState.Tentative and self.hits >= self._n_init:
             self.state = TrackState.Confirmed
 
@@ -164,3 +168,6 @@ class Track:
     def is_deleted(self):
         """Returns True if this track is dead and should be deleted."""
         return self.state == TrackState.Deleted
+
+    def to_arr(self):
+        return [self.track_id, self.cls_id, self.score] + self.to_tlbr().tolist() + self.mean[4:].tolist()
