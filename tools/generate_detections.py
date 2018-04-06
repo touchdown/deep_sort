@@ -6,10 +6,15 @@ import numpy as np
 import cv2
 import tensorflow as tf
 
-
+# Abe note: This may be some garbage-ass code, not even really sure what it does. We've removed batching for now.
+# This appears to be rudimentary loop-based batching that is inappropriate for more advanced tensorflow calls.
+# In particular, the len(out) call only really makes sense if out is a single dimension (e.g., list)
+# But it's going to do weird shit if out is, say, a two- or four-dimensional array.
 def _run_in_batches(f, data_dict, out, batch_size):
     data_len = len(out)
     num_batches = int(data_len / batch_size)
+    
+    #print("Running in batches. data_len: {} num_batches: {}".format(data_len, num_batches))
 
     s, e = 0, 0
     for i in range(num_batches):
@@ -45,7 +50,13 @@ def extract_image_patch(image, bbox, patch_shape):
         boundaries.
 
     """
+    #print("Patch shape is: {}".format(patch_shape))
     bbox = np.array(bbox)
+    if patch_shape and not any(patch_shape):
+        # TODO: We just picked 256x256 for the hell of it to get the code running
+        # For "good networks", we can hand in [None, None] as the dimensions and it still works
+        # So it would be cool if we didn't need to resize at all!
+        patch_shape = [256,256]
     if patch_shape is not None:
         # correct aspect ratio to patch shape
         target_aspect = float(patch_shape[1]) / patch_shape[0]
@@ -79,19 +90,23 @@ class ImageEncoder(object):
         tf.import_graph_def(graph_def, name="net")
         self.input_var = tf.get_default_graph().get_tensor_by_name(
             "net/%s:0" % input_name)
-        self.output_var = tf.get_default_graph().get_tensor_by_name(
-            "net/%s:0" % output_name)
+        temp_output = tf.get_default_graph().get_tensor_by_name("net/%s:0" % output_name)
 
+        # For a lot of the TF models, the feature layer is batch x 1 x 1 x N, so we need to turn that into
+        # batch x N, through tf.squeeze
+        if len(temp_output.get_shape())==4:
+            self.output_var = tf.squeeze(temp_output, axis=[1,2])
+        else:
+            self.output_var = temp_output
         assert len(self.output_var.get_shape()) == 2
         assert len(self.input_var.get_shape()) == 4
         self.feature_dim = self.output_var.get_shape().as_list()[-1]
         self.image_shape = self.input_var.get_shape().as_list()[1:]
 
-    def __call__(self, data_x, batch_size=32):
-        out = np.zeros((len(data_x), self.feature_dim), np.float32)
-        _run_in_batches(
-            lambda x: self.session.run(self.output_var, feed_dict=x),
-            {self.input_var: data_x}, out, batch_size)
+    def __call__(self, data_x):
+        # This used to be batched, batching removed.
+        out = self.session.run(self.output_var, feed_dict={self.input_var: data_x})
+        
         return out
 
 
@@ -110,7 +125,7 @@ def create_box_encoder(model_filename, input_name="images",
                     0., 255., image_shape).astype(np.uint8)
             image_patches.append(patch)
         image_patches = np.asarray(image_patches)
-        return image_encoder(image_patches, batch_size)
+        return image_encoder(image_patches)
 
     return encoder
 
